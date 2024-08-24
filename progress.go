@@ -13,6 +13,9 @@ type ProgressBar struct {
 	Label   string
 	Theme   ProgressTheme
 
+	running bool
+	stopped bool
+
 	stop  chan struct{}
 	abort chan struct{}
 	wg    sync.WaitGroup
@@ -30,6 +33,9 @@ func NewProgressBarWithTheme(label string, total int, theme ProgressTheme) *Prog
 		Current: 0,
 		Label:   label,
 		Theme:   theme,
+
+		stopped: true,
+		running: false,
 
 		stop:  make(chan struct{}),
 		abort: make(chan struct{}),
@@ -63,6 +69,13 @@ func (p *ProgressBar) Finished() bool {
 
 // Start starts the progress bar draw-goroutine
 func (p *ProgressBar) Start() {
+	if p.running {
+		return
+	}
+
+	p.running = true
+	p.stopped = false
+
 	p.wg.Add(1)
 
 	go func() {
@@ -77,6 +90,8 @@ func (p *ProgressBar) Start() {
 			fmt.Println()
 
 			p.wg.Done()
+
+			p.running = false
 		}()
 
 		ticker := time.NewTicker(150 * time.Millisecond)
@@ -104,6 +119,12 @@ func (p *ProgressBar) Start() {
 
 // Stop stops the progress bar, prints the final progress and waits for the draw goroutine to finish
 func (p *ProgressBar) Stop() {
+	if p.stopped || !p.running {
+		return
+	}
+
+	p.stopped = true
+
 	close(p.stop)
 
 	p.wg.Wait()
@@ -111,6 +132,12 @@ func (p *ProgressBar) Stop() {
 
 // Abort stops the progress bar, does not print the final progress and waits for the draw goroutine to finish
 func (p *ProgressBar) Abort() {
+	if p.stopped || !p.running {
+		return
+	}
+
+	p.stopped = true
+
 	close(p.abort)
 
 	p.wg.Wait()

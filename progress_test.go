@@ -19,6 +19,8 @@ func testBarTheme(label string, theme ProgressTheme) {
 	bar := NewProgressBarWithTheme(label, 80, theme)
 
 	bar.Start()
+	bar.Start()
+	bar.Start()
 
 	for !bar.Finished() {
 		time.Sleep(time.Duration(50+rand.Intn(200)) * time.Millisecond)
@@ -27,4 +29,7 @@ func testBarTheme(label string, theme ProgressTheme) {
 	}
 
 	bar.Stop()
+	bar.Abort()
+	bar.Stop()
+	bar.Abort()
 }
