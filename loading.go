@@ -11,6 +11,7 @@ const LoadingFrames = "|/-\\"
 type LoadingSpinner struct {
 	frame   int
 	running bool
+	paused  bool
 
 	stop chan struct{}
 	wg   sync.WaitGroup
@@ -48,7 +49,9 @@ func (l *LoadingSpinner) Start() {
 		for {
 			select {
 			case <-ticker.C:
-				l.step()
+				if !l.paused {
+					l.step()
+				}
 			case <-l.stop:
 				return
 			}
@@ -65,6 +68,16 @@ func (l *LoadingSpinner) Stop() {
 	close(l.stop)
 
 	l.wg.Wait()
+}
+
+// Pause pauses the loading spinner
+func (l *LoadingSpinner) Pause() {
+	l.paused = true
+}
+
+// Resume resumes the loading spinner
+func (l *LoadingSpinner) Resume() {
+	l.paused = false
 }
 
 func (l *LoadingSpinner) step() {
