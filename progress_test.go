@@ -15,6 +15,16 @@ func TestProgressBar(t *testing.T) {
 	testBarTheme("GradientUnicode", ThemeGradientUnicode)
 }
 
+func TestLoadingSpinner(t *testing.T) {
+	spin := NewLoadingSpinner()
+
+	spin.Start()
+
+	time.Sleep(time.Duration(3000) * time.Millisecond)
+
+	spin.Stop()
+}
+
 func testBarTheme(label string, theme ProgressTheme) {
 	bar := NewProgressBarWithTheme(label, 80, theme)
 
