@@ -38,8 +38,6 @@ func (l *LoadingSpinner) Start() {
 
 	go func() {
 		defer func() {
-			fmt.Println()
-
 			l.wg.Done()
 
 			l.running = false
@@ -52,7 +50,6 @@ func (l *LoadingSpinner) Start() {
 			case <-ticker.C:
 				l.step()
 			case <-l.stop:
-				fmt.Print(" ")
 				return
 			}
 		}
