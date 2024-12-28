@@ -71,8 +71,14 @@ func NewProgressBar(label string, total int) *Bar {
 // WithConfig sets the progress bar to use the given config
 func (p *Bar) WithConfig(config Config) *Bar {
 	p.counter = config.Counter
-	p.theme = config.Theme
-	p.tick = config.Tick
+
+	if config.Theme != nil {
+		p.theme = config.Theme
+	}
+
+	if config.Tick != 0 {
+		p.tick = config.Tick
+	}
 
 	if config.Delimiters {
 		var delimiter rune
