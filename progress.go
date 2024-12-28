@@ -6,13 +6,14 @@ import (
 	"math"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type Bar struct {
-	total   int
+	total   int64
 	label   string
-	current int
+	current int64
 
 	length int
 	digits int
@@ -45,7 +46,7 @@ type Config struct {
 }
 
 // NewProgressBar returns a new progress bar with the given label, total and the default theme
-func NewProgressBar(label string, total int) *Bar {
+func NewProgressBar(label string, total int64) *Bar {
 	return &Bar{
 		total:   total,
 		label:   label,
@@ -97,21 +98,12 @@ func (p *Bar) WithConfig(config Config) *Bar {
 
 // Increment increments the progress bar by 1
 func (p *Bar) Increment() {
-	p.IncrementBy(1)
-}
-
-// IncrementBy increments the progress bar by the given amount
-func (p *Bar) IncrementBy(amount int) {
-	p.current += amount
-
-	if p.current > p.total {
-		p.current = p.total
-	}
+	atomic.AddInt64(&p.current, 1)
 }
 
 // Reset resets the progress bar's current to 0
 func (p *Bar) Reset() {
-	p.current = 0
+	atomic.StoreInt64(&p.current, 0)
 }
 
 // Finished returns true if the progress bar has finished (reached its total)
@@ -132,7 +124,8 @@ func (p *Bar) Start() {
 
 	go func() {
 		var (
-			current int
+			last    int64
+			current int64
 			aborted bool
 
 			ticker = time.NewTicker(p.tick)
@@ -140,7 +133,8 @@ func (p *Bar) Start() {
 
 		defer func() {
 			if !aborted {
-				p.current = p.total
+				atomic.StoreInt64(&p.current, p.total)
+
 				p.draw()
 			}
 
@@ -156,10 +150,12 @@ func (p *Bar) Start() {
 		for {
 			select {
 			case <-ticker.C:
-				if p.current != current {
+				current = atomic.LoadInt64(&p.current)
+
+				if current != last {
 					p.draw()
 
-					current = p.current
+					last = current
 				}
 			case <-p.stop:
 				return
@@ -204,6 +200,8 @@ func (p *Bar) draw() error {
 		return err
 	}
 
+	current := atomic.LoadInt64(&p.current)
+
 	// Fallback to default theme if no theme is set
 	if p.theme == nil {
 		p.theme = ThemeBlocksAscii()
@@ -232,11 +230,11 @@ func (p *Bar) draw() error {
 
 	// Add the count
 	if p.counter {
-		suffix.WriteString(fmt.Sprintf("%*d/%*d ", p.digits, p.current, p.digits, p.total))
+		suffix.WriteString(fmt.Sprintf("%*d/%*d ", p.digits, current, p.digits, p.total))
 	}
 
 	// Add the percentage
-	percentage := float64(p.current) / float64(p.total)
+	percentage := float64(current) / float64(p.total)
 
 	suffix.WriteString(fmt.Sprintf("%5.1f%%", percentage*100))
 
