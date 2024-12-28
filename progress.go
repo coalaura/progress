@@ -101,6 +101,11 @@ func (p *Bar) Increment() {
 	atomic.AddInt64(&p.current, 1)
 }
 
+// IncrementBy increments the progress bar by the given amount
+func (p *Bar) IncrementBy(amount int64) {
+	atomic.AddInt64(&p.current, amount)
+}
+
 // Reset resets the progress bar's current to 0
 func (p *Bar) Reset() {
 	atomic.StoreInt64(&p.current, 0)
