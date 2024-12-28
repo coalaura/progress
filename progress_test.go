@@ -1,21 +1,32 @@
 package progress
 
 import (
-	"math/rand"
+	"fmt"
 	"testing"
 	"time"
 )
 
 func TestProgressBar(t *testing.T) {
-	testBarTheme("Default", ThemeDefault)
-	testBarTheme("Dots", ThemeDots)
-	testBarTheme("Hash", ThemeHash)
+	fmt.Println("- - - Progress Bars - - -")
 
-	testBarTheme("BlocksUnicode", ThemeBlocksUnicode)
-	testBarTheme("GradientUnicode", ThemeGradientUnicode)
+	themes := map[string]generator{
+		"Blocks ": ThemeBlocks,
+		"Braille": ThemeBraille,
+		"Dots   ": ThemeDots,
+		"Pixels ": ThemePixels,
+		"Shades ": ThemeShades,
+	}
+
+	for name, theme := range themes {
+		testBarTheme(name, theme())
+	}
+
+	fmt.Println()
 }
 
 func TestLoadingSpinner(t *testing.T) {
+	fmt.Println("- - - Loading Spinner - - -")
+
 	spin := NewLoadingSpinner()
 
 	spin.Start()
@@ -23,19 +34,26 @@ func TestLoadingSpinner(t *testing.T) {
 	time.Sleep(time.Duration(3000) * time.Millisecond)
 
 	spin.Stop()
+
+	fmt.Println()
 }
 
-func testBarTheme(label string, theme ProgressTheme) {
-	bar := NewProgressBarWithTheme(label, 80, theme)
+func testBarTheme(name string, theme Theme) {
+	bar := NewProgressBar(name, 500).WithConfig(Config{
+		Counter:    true,
+		Delimiters: true,
+		Tick:       30 * time.Millisecond,
+		Theme:      theme,
+	})
 
 	bar.Start()
 	bar.Start()
 	bar.Start()
 
 	for !bar.Finished() {
-		time.Sleep(time.Duration(50+rand.Intn(200)) * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 
-		bar.IncrementBy(1 + rand.Intn(3))
+		bar.Increment()
 	}
 
 	bar.Stop()

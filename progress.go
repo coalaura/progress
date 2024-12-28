@@ -1,17 +1,26 @@
 package progress
 
 import (
+	"bytes"
 	"fmt"
-	"strings"
+	"math"
+	"os"
 	"sync"
 	"time"
 )
 
-type ProgressBar struct {
-	Total   int
-	Current int
-	Label   string
-	Theme   ProgressTheme
+type Bar struct {
+	total   int
+	label   string
+	current int
+
+	length int
+	digits int
+
+	tick      time.Duration
+	counter   bool
+	delimiter *rune
+	theme     Theme
 
 	running bool
 	stopped bool
@@ -21,21 +30,37 @@ type ProgressBar struct {
 	wg    sync.WaitGroup
 }
 
-// NewProgressBar returns a new progress bar with the given label, total and the default theme
-func NewProgressBar(label string, total int) *ProgressBar {
-	return NewProgressBarWithTheme(label, total, ThemeDefault)
+type Config struct {
+	// If the current and total should be displayed left of the percentage
+	Counter bool
+
+	// If the delimiters should be displayed
+	Delimiters bool
+
+	// The progress bar theme
+	Theme Theme
+
+	// The tick duration between each update (draw call)
+	Tick time.Duration
 }
 
-// NewProgressBarWithTheme returns a new progress bar with the given label, total and theme
-func NewProgressBarWithTheme(label string, total int, theme ProgressTheme) *ProgressBar {
-	return &ProgressBar{
-		Total:   total,
-		Current: 0,
-		Label:   label,
-		Theme:   theme,
+// NewProgressBar returns a new progress bar with the given label, total and the default theme
+func NewProgressBar(label string, total int) *Bar {
+	return &Bar{
+		total:   total,
+		label:   label,
+		current: 0,
 
-		stopped: true,
+		length: len([]rune(label)),
+		digits: int(math.Log10(float64(total))) + 1,
+
+		tick:      50 * time.Millisecond,
+		counter:   false,
+		delimiter: nil,
+		theme:     nil,
+
 		running: false,
+		stopped: true,
 
 		stop:  make(chan struct{}),
 		abort: make(chan struct{}),
@@ -43,32 +68,53 @@ func NewProgressBarWithTheme(label string, total int, theme ProgressTheme) *Prog
 	}
 }
 
+// WithConfig sets the progress bar to use the given config
+func (p *Bar) WithConfig(config Config) *Bar {
+	p.counter = config.Counter
+	p.theme = config.Theme
+	p.tick = config.Tick
+
+	if config.Delimiters {
+		var delimiter rune
+
+		if supportsUnicode() {
+			delimiter = '│'
+		} else {
+			delimiter = '|'
+		}
+
+		p.delimiter = &delimiter
+	}
+
+	return p
+}
+
 // Increment increments the progress bar by 1
-func (p *ProgressBar) Increment() {
+func (p *Bar) Increment() {
 	p.IncrementBy(1)
 }
 
 // IncrementBy increments the progress bar by the given amount
-func (p *ProgressBar) IncrementBy(amount int) {
-	p.Current += amount
+func (p *Bar) IncrementBy(amount int) {
+	p.current += amount
 
-	if p.Current > p.Total {
-		p.Current = p.Total
+	if p.current > p.total {
+		p.current = p.total
 	}
 }
 
 // Reset resets the progress bar's current to 0
-func (p *ProgressBar) Reset() {
-	p.Current = 0
+func (p *Bar) Reset() {
+	p.current = 0
 }
 
 // Finished returns true if the progress bar has finished (reached its total)
-func (p *ProgressBar) Finished() bool {
-	return p.Current == p.Total
+func (p *Bar) Finished() bool {
+	return p.current == p.total
 }
 
 // Start starts the progress bar draw-goroutine
-func (p *ProgressBar) Start() {
+func (p *Bar) Start() {
 	if p.running {
 		return
 	}
@@ -79,11 +125,16 @@ func (p *ProgressBar) Start() {
 	p.wg.Add(1)
 
 	go func() {
-		var aborted bool
+		var (
+			current int
+			aborted bool
+
+			ticker = time.NewTicker(p.tick)
+		)
 
 		defer func() {
 			if !aborted {
-				p.Current = p.Total
+				p.current = p.total
 				p.draw()
 			}
 
@@ -94,17 +145,15 @@ func (p *ProgressBar) Start() {
 			p.running = false
 		}()
 
-		ticker := time.NewTicker(150 * time.Millisecond)
-
-		lastCurrent := -1
+		p.draw()
 
 		for {
 			select {
 			case <-ticker.C:
-				if p.Current != lastCurrent {
+				if p.current != current {
 					p.draw()
 
-					lastCurrent = p.Current
+					current = p.current
 				}
 			case <-p.stop:
 				return
@@ -118,7 +167,7 @@ func (p *ProgressBar) Start() {
 }
 
 // Stop stops the progress bar, prints the final progress and waits for the draw goroutine to finish
-func (p *ProgressBar) Stop() {
+func (p *Bar) Stop() {
 	if p.stopped || !p.running {
 		return
 	}
@@ -131,7 +180,7 @@ func (p *ProgressBar) Stop() {
 }
 
 // Abort stops the progress bar, does not print the final progress and waits for the draw goroutine to finish
-func (p *ProgressBar) Abort() {
+func (p *Bar) Abort() {
 	if p.stopped || !p.running {
 		return
 	}
@@ -143,33 +192,71 @@ func (p *ProgressBar) Abort() {
 	p.wg.Wait()
 }
 
-func (p *ProgressBar) draw() error {
+func (p *Bar) draw() error {
 	cols, err := getTermCols()
 	if err != nil {
 		return err
 	}
 
-	percentage := float64(p.Current) / float64(p.Total) * 100
-
-	left := fmt.Sprintf("%s [", p.Label)
-	right := fmt.Sprintf("] %5.1f%%", percentage)
-
-	width := cols - len([]rune(left)) - len([]rune(right)) - 1
-
-	filled := int(percentage / 100 * float64(width))
-	empty := width - filled
-
-	bar := strings.Repeat(p.Theme.Filled, filled)
-
-	if filled < width {
-		bar += p.Theme.Tip
-
-		empty -= len([]rune(p.Theme.Tip))
+	// Fallback to default theme if no theme is set
+	if p.theme == nil {
+		p.theme = ThemeBlocksAscii()
 	}
 
-	bar += strings.Repeat(p.Theme.Empty, empty)
+	// Padding to avoid overflow
+	cols -= 1
 
-	fmt.Printf("%s%s%s\r", left, bar, right)
+	var (
+		buffer bytes.Buffer
+		suffix bytes.Buffer
+	)
+
+	buffer.WriteRune('\r')
+
+	// Add the label
+	if p.label != "" {
+		buffer.WriteString(p.label)
+		buffer.WriteString(" ")
+
+		cols -= p.length + 1
+	}
+
+	// Build the suffix
+	suffix.WriteString(" ")
+
+	// Add the count
+	if p.counter {
+		suffix.WriteString(fmt.Sprintf("%*d/%*d ", p.digits, p.current, p.digits, p.total))
+	}
+
+	// Add the percentage
+	percentage := float64(p.current) / float64(p.total)
+
+	suffix.WriteString(fmt.Sprintf("%5.1f%%", percentage*100))
+
+	// Update remaining space
+	cols -= suffix.Len()
+
+	// Add the left delimiter
+	if p.delimiter != nil {
+		buffer.WriteRune(*p.delimiter)
+
+		cols -= 2
+	}
+
+	// Add the bar
+	p.theme(&buffer, percentage, cols)
+
+	// Add the right delimiter
+	if p.delimiter != nil {
+		buffer.WriteRune(*p.delimiter)
+	}
+
+	// Add the suffix
+	buffer.Write(suffix.Bytes())
+
+	// Print the progress bar
+	fmt.Fprint(os.Stdout, buffer.String())
 
 	return nil
 }
