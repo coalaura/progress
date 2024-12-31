@@ -17,7 +17,11 @@ type Bar struct {
 
 	length int
 	digits int
-	theme  Theme
+
+	tickrate   time.Duration
+	theme      Theme
+	delimiters bool
+	counter    bool
 
 	running bool
 	stopped bool
@@ -34,37 +38,8 @@ const (
 	Fps60 = 16 * time.Millisecond
 )
 
-// default options
-var (
-	_theme = ThemeBlocksAscii
-
-	_tickrate       = Fps20
-	_showDelimiters = false
-	_showCounter    = false
-)
-
-// SetDefaults sets the default options
-func SetDefaults(tickrate time.Duration, showDelimiters, showCounter bool) {
-	_tickrate = tickrate
-	_showDelimiters = showDelimiters
-	_showCounter = showCounter
-}
-
-// SetDefaultTheme sets the default theme
-func SetDefaultTheme(theme generator) {
-	if theme == nil {
-		return
-	}
-
-	_theme = theme
-}
-
-// NewProgressBar returns a new progress bar with the given label, total and theme (or the default theme)
-func NewProgressBar(label string, total int64, theme generator) *Bar {
-	if theme == nil {
-		theme = _theme
-	}
-
+// NewProgressBar returns a new progress bar with the given label, total, tickrate, theme, delimiters and counter
+func NewProgressBar(label string, total int64, tickrate time.Duration, theme generator, delimiters, counter bool) *Bar {
 	bar := &Bar{
 		total:   total,
 		label:   label,
@@ -72,7 +47,11 @@ func NewProgressBar(label string, total int64, theme generator) *Bar {
 
 		length: len([]rune(label)),
 		digits: int(math.Log10(float64(total))) + 1,
-		theme:  theme(),
+
+		tickrate:   tickrate,
+		theme:      theme(),
+		delimiters: delimiters,
+		counter:    counter,
 
 		running: false,
 		stopped: true,
@@ -83,6 +62,16 @@ func NewProgressBar(label string, total int64, theme generator) *Bar {
 	}
 
 	return bar
+}
+
+// NewProgressBarWithTheme returns a new progress bar with the given label, total and theme
+func NewProgressBarWithTheme(label string, total int64, theme Theme) *Bar {
+	return NewProgressBar(label, total, Fps20, func() Theme { return theme }, false, false)
+}
+
+// NewDefaultProgressBar returns a new progress bar with the given label and total
+func NewDefaultProgressBar(label string, total int64) *Bar {
+	return NewProgressBar(label, total, Fps20, ThemeBlocks, false, false)
 }
 
 // Increment increments the progress bar by 1
@@ -122,7 +111,7 @@ func (p *Bar) Start() {
 			current int64
 			aborted bool
 
-			ticker = time.NewTicker(_tickrate)
+			ticker = time.NewTicker(p.tickrate)
 		)
 
 		defer func() {
@@ -189,15 +178,9 @@ func (p *Bar) Abort() {
 }
 
 func (p *Bar) draw() error {
-	cols, err := getTermCols()
-	if err != nil {
-		return err
-	}
+	columns := TerminalWidth()
 
 	current := atomic.LoadInt64(&p.current)
-
-	// Padding to avoid overflow
-	cols -= 1
 
 	var (
 		buffer bytes.Buffer
@@ -211,14 +194,14 @@ func (p *Bar) draw() error {
 		buffer.WriteString(p.label)
 		buffer.WriteString(" ")
 
-		cols -= p.length + 1
+		columns -= p.length + 1
 	}
 
 	// Build the suffix
 	suffix.WriteString(" ")
 
 	// Add the count
-	if _showCounter {
+	if p.counter {
 		suffix.WriteString(fmt.Sprintf("%*d/%*d ", p.digits, current, p.digits, p.total))
 	}
 
@@ -228,16 +211,16 @@ func (p *Bar) draw() error {
 	suffix.WriteString(fmt.Sprintf("%5.1f%%", percentage*100))
 
 	// Update remaining space
-	cols -= suffix.Len()
+	columns -= suffix.Len()
 
 	// Add the left delimiter
-	addDelimiter(&buffer)
+	addDelimiter(&buffer, &columns, p.delimiters)
 
 	// Add the bar
-	p.theme(&buffer, percentage, cols)
+	p.theme(&buffer, percentage, columns)
 
 	// Add the right delimiter
-	addDelimiter(&buffer)
+	addDelimiter(&buffer, &columns, p.delimiters)
 
 	// Add the suffix
 	buffer.Write(suffix.Bytes())
@@ -248,10 +231,12 @@ func (p *Bar) draw() error {
 	return nil
 }
 
-func addDelimiter(buffer *bytes.Buffer) {
-	if !_showDelimiters {
+func addDelimiter(buffer *bytes.Buffer, columns *int, delimiters bool) {
+	if !delimiters {
 		return
 	}
+
+	*columns--
 
 	if SupportsUnicode() {
 		buffer.WriteRune('│')

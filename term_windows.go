@@ -3,7 +3,6 @@
 package progress
 
 import (
-	"os"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -13,21 +12,6 @@ var (
 	kernel32           = syscall.NewLazyDLL("kernel32.dll")
 	getConsoleOutputCP = kernel32.NewProc("GetConsoleOutputCP")
 )
-
-func getTermCols() (int, error) {
-	stdOut := windows.Handle(os.Stdout.Fd())
-
-	var csbi windows.ConsoleScreenBufferInfo
-
-	err := windows.GetConsoleScreenBufferInfo(stdOut, &csbi)
-	if err != nil {
-		return 0, err
-	}
-
-	width := csbi.Window.Right - csbi.Window.Left + 1
-
-	return int(width), nil
-}
 
 func supportsUnicode() bool {
 	stdout := windows.Handle(windows.Stdout)

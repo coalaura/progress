@@ -1,5 +1,11 @@
 package progress
 
+import (
+	"os"
+
+	"golang.org/x/term"
+)
+
 var (
 	unicode *bool
 )
@@ -13,4 +19,14 @@ func SupportsUnicode() bool {
 	}
 
 	return *unicode
+}
+
+func TerminalWidth() int {
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 80 // fallback
+	}
+
+	// Padding to avoid overflow
+	return width - 1
 }
