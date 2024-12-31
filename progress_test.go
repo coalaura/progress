@@ -39,7 +39,7 @@ func TestLoadingSpinner(t *testing.T) {
 }
 
 func testBarTheme(name string, theme generator) {
-	bar := NewProgressBar(name, 500, Fps30, theme, true, true)
+	bar := NewProgressBar(name, 500, theme, true, true)
 
 	bar.Start()
 	bar.Start()

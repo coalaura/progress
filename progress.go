@@ -18,7 +18,6 @@ type Bar struct {
 	length int
 	digits int
 
-	tickrate   time.Duration
 	theme      Theme
 	delimiters bool
 	counter    bool
@@ -31,15 +30,8 @@ type Bar struct {
 	wg    sync.WaitGroup
 }
 
-const (
-	Fps10 = 100 * time.Millisecond
-	Fps20 = 50 * time.Millisecond
-	Fps30 = 33 * time.Millisecond
-	Fps60 = 16 * time.Millisecond
-)
-
 // NewProgressBar returns a new progress bar with the given label, total, tickrate, theme, delimiters and counter
-func NewProgressBar(label string, total int64, tickrate time.Duration, theme generator, delimiters, counter bool) *Bar {
+func NewProgressBar(label string, total int64, theme generator, delimiters, counter bool) *Bar {
 	bar := &Bar{
 		total:   total,
 		label:   label,
@@ -48,7 +40,6 @@ func NewProgressBar(label string, total int64, tickrate time.Duration, theme gen
 		length: len([]rune(label)),
 		digits: int(math.Log10(float64(total))) + 1,
 
-		tickrate:   tickrate,
 		theme:      theme(),
 		delimiters: delimiters,
 		counter:    counter,
@@ -65,13 +56,13 @@ func NewProgressBar(label string, total int64, tickrate time.Duration, theme gen
 }
 
 // NewProgressBarWithTheme returns a new progress bar with the given label, total and theme
-func NewProgressBarWithTheme(label string, total int64, theme Theme) *Bar {
-	return NewProgressBar(label, total, Fps20, func() Theme { return theme }, false, false)
+func NewProgressBarWithTheme(label string, total int64, theme generator) *Bar {
+	return NewProgressBar(label, total, theme, false, false)
 }
 
 // NewDefaultProgressBar returns a new progress bar with the given label and total
 func NewDefaultProgressBar(label string, total int64) *Bar {
-	return NewProgressBar(label, total, Fps20, ThemeBlocks, false, false)
+	return NewProgressBar(label, total, ThemeBlocks, false, false)
 }
 
 // Increment increments the progress bar by 1
@@ -111,7 +102,7 @@ func (p *Bar) Start() {
 			current int64
 			aborted bool
 
-			ticker = time.NewTicker(p.tickrate)
+			ticker = time.NewTicker(50 * time.Millisecond) // 20fps
 		)
 
 		defer func() {
