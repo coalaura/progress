@@ -36,22 +36,33 @@ const (
 
 // default options
 var (
+	_theme = ThemeBlocksAscii
+
 	_tickrate       = Fps20
 	_showDelimiters = false
 	_showCounter    = false
 )
 
-// SetDefaults sets the default options (used when no options are passed)
+// SetDefaults sets the default options
 func SetDefaults(tickrate time.Duration, showDelimiters, showCounter bool) {
 	_tickrate = tickrate
 	_showDelimiters = showDelimiters
 	_showCounter = showCounter
 }
 
+// SetDefaultTheme sets the default theme
+func SetDefaultTheme(theme generator) {
+	if theme == nil {
+		return
+	}
+
+	_theme = theme
+}
+
 // NewProgressBar returns a new progress bar with the given label, total and theme (or the default theme)
 func NewProgressBar(label string, total int64, theme generator) *Bar {
 	if theme == nil {
-		theme = ThemeBlocksAscii
+		theme = _theme
 	}
 
 	bar := &Bar{
