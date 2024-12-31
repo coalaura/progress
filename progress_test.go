@@ -9,6 +9,8 @@ import (
 func TestProgressBar(t *testing.T) {
 	fmt.Println("- - - Progress Bars - - -")
 
+	SetDefaults(Fps30, true, true)
+
 	themes := map[string]generator{
 		"Blocks ": ThemeBlocks,
 		"Braille": ThemeBraille,
@@ -18,7 +20,7 @@ func TestProgressBar(t *testing.T) {
 	}
 
 	for name, theme := range themes {
-		testBarTheme(name, theme())
+		testBarTheme(name, theme)
 	}
 
 	fmt.Println()
@@ -38,13 +40,8 @@ func TestLoadingSpinner(t *testing.T) {
 	fmt.Println()
 }
 
-func testBarTheme(name string, theme Theme) {
-	bar := NewProgressBar(name, 500).WithConfig(Config{
-		Counter:    true,
-		Delimiters: true,
-		Tick:       30 * time.Millisecond,
-		Theme:      theme,
-	})
+func testBarTheme(name string, theme generator) {
+	bar := NewProgressBar(name, 500, theme)
 
 	bar.Start()
 	bar.Start()
